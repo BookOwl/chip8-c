@@ -6,6 +6,13 @@
 #include "instruction.c"
 #include "graphics.c"
 
+const SDL_Scancode KEYS[16] = {
+        SDL_SCANCODE_1, SDL_SCANCODE_2, SDL_SCANCODE_3, SDL_SCANCODE_4,
+        SDL_SCANCODE_Q, SDL_SCANCODE_W, SDL_SCANCODE_E, SDL_SCANCODE_R,
+        SDL_SCANCODE_A, SDL_SCANCODE_S, SDL_SCANCODE_D, SDL_SCANCODE_F,
+        SDL_SCANCODE_Z, SDL_SCANCODE_X, SDL_SCANCODE_C, SDL_SCANCODE_V
+};
+
 typedef struct {
     uint16_t stack[256];
     uint8_t ptr;
@@ -29,8 +36,7 @@ int callstack_pop(callstack* stack) {
 }
 
 uint8_t rand_byte() {
-    // Very random number
-    return 4;
+    return rand() % 256;
 }
 
 typedef enum {
@@ -67,18 +73,22 @@ typedef struct vm {
     uint8_t tpu;
     uint8_t delay;
     uint8_t sound;
+    bool waiting_for_keypress;
+    SDL_Scancode* key_released;
     callstack stack;
     fps_clock clock;
     sdl_handle* gfx;
 } chip8_vm;
 
-void vm_load_program(chip8_vm* vm, sdl_handle* gfx, uint8_t ticks_per_update, uint8_t program[], int program_len) {
+void vm_load_program(chip8_vm* vm, sdl_handle* gfx, uint8_t ticks_per_update, const uint8_t program[], int program_len) {
     for (int i = 0; i < 16; i++){
         vm->reg[i] = 0;
     }
     vm->i = 0;
     vm->delay = 0;
     vm->sound = 0;
+    vm->waiting_for_keypress = false;
+    vm->key_released = NULL;
     vm->tpu = ticks_per_update;
     vm->stack = new_callstack();
     vm->clock = new_fps_clock(60);
@@ -129,7 +139,7 @@ tick_result vm_tick(chip8_vm* vm) {
             uint8_t x = vm->reg[inst.reg1];
             uint8_t y = vm->reg[inst.reg2];
             uint8_t res = x - y;
-            if (x < y) {
+            if (x > y) {
                 vm->reg[0xF] = 0x01;
             } else {
                 vm->reg[0xF] = 0x00;
@@ -141,7 +151,7 @@ tick_result vm_tick(chip8_vm* vm) {
             uint8_t x = vm->reg[inst.reg1];
             uint8_t y = vm->reg[inst.reg2];
             uint8_t res = y - x;
-            if (y < x) {
+            if (y > x) {
                 vm->reg[0xF] = 0x01;
             } else {
                 vm->reg[0xF] = 0x00;
@@ -212,10 +222,87 @@ tick_result vm_tick(chip8_vm* vm) {
             vm->sound = (vm->reg[inst.reg1] > 1) ? vm->reg[inst.reg1] : 0;
             break;
         case WAIT_FOR_KEY:
-        case SKP_IF_KEY:
-        case SKP_IF_NOT_KEY:
-            // TODO: Need SDL hooked up first.
+            if (!vm->waiting_for_keypress) {
+                vm->waiting_for_keypress = true;
+            }
+            if (vm->key_released != NULL) {
+                uint8_t code;
+                switch (*vm->key_released) {
+                    case SDL_SCANCODE_1:
+                        code = 0x0;
+                        break;
+                    case SDL_SCANCODE_2:
+                        code = 0x1;
+                        break;
+                    case SDL_SCANCODE_3:
+                        code = 0x2;
+                        break;
+                    case SDL_SCANCODE_4:
+                        code = 0x3;
+                        break;
+                    case SDL_SCANCODE_Q:
+                        code = 0x4;
+                        break;
+                    case SDL_SCANCODE_W:
+                        code = 0x5;
+                        break;
+                    case SDL_SCANCODE_E:
+                        code = 0x6;
+                        break;
+                    case SDL_SCANCODE_R:
+                        code = 0x7;
+                        break;
+                    case SDL_SCANCODE_A:
+                        code = 0x8;
+                        break;
+                    case SDL_SCANCODE_S:
+                        code = 0x9;
+                        break;
+                    case SDL_SCANCODE_D:
+                        code = 0xa;
+                        break;
+                    case SDL_SCANCODE_F:
+                        code = 0xb;
+                        break;
+                    case SDL_SCANCODE_Z:
+                        code = 0xc;
+                        break;
+                    case SDL_SCANCODE_X:
+                        code = 0xd;
+                        break;
+                    case SDL_SCANCODE_C:
+                        code = 0xe;
+                        break;
+                    case SDL_SCANCODE_V:
+                        code = 0xf;
+                        break;
+                    default:
+                        puts("Invalid keycode received in wait_for_key!!!");
+                        code = 0x0;
+                        break;
+                }
+                vm->key_released = false;
+                vm->waiting_for_keypress = false;
+            } else {
+                // If a key has not been released change vm->pc to point at this same instruction
+                // so the VM loops until a key is released
+                vm->pc -= 2;
+            }
             break;
+        case SKP_IF_KEY: {
+            const uint8_t *state = SDL_GetKeyboardState(NULL);
+            if (state[KEYS[vm->reg[inst.reg1]]]) {
+                vm->pc += 2;
+            }
+            break;
+        }
+        case SKP_IF_NOT_KEY: {
+            const uint8_t *state = SDL_GetKeyboardState(NULL);
+            if (!state[KEYS[vm->reg[inst.reg1]]]) {
+                vm->pc += 2;
+            }
+            break;
+        }
         case LOAD_I:
             vm->i = inst.data;
             break;
@@ -265,8 +352,8 @@ tick_result vm_run_frame(chip8_vm* vm) {
         res = vm_tick(vm);
         if (res != SUCCESS) return res;
     }
-    vm->sound--;
-    vm->delay--;
+    if (vm-> sound > 0) vm->sound--;
+    if (vm->delay > 0) vm->delay--;
     display_screen(vm->gfx);
     fps_clock_tick(&vm->clock);
     return SUCCESS;
@@ -289,20 +376,7 @@ uint8_t* read_binary_file(char *path, long* size_out) {
     return buf;
 }
 
-
-int main(int argc, char *argv[]) {
-    if (argc < 2) {
-        puts("ERROR: ROM path not given");
-        return 1;
-    }
-    char* rom_path = argv[1];
-    long rom_size;
-    uint8_t* rom = read_binary_file(rom_path, &rom_size);
-    sdl_handle h = graphics_init();
-    clear_screen(&h);
-    display_screen(&h);
-    chip8_vm vm;
-    vm_load_program(&vm, &h, 8, rom, rom_size);
+void vm_run(chip8_vm* vm) {
     bool quit = false;
     SDL_Event e;
     tick_result res;
@@ -313,8 +387,15 @@ int main(int argc, char *argv[]) {
                 quit = true;
                 break;
             }
+            if ((e.type == SDL_KEYUP) && vm->waiting_for_keypress) {
+                for (int i = 0; i < 16; i++) {
+                    if (e.key.keysym.scancode == KEYS[i]) {
+                        vm->key_released = &KEYS[i];
+                    }
+                }
+            }
         }
-        res = vm_run_frame(&vm);
+        res = vm_run_frame(vm);
         switch (res) {
             case ERR_INVALID:
                 puts("Invalid instruction!!!");
@@ -329,5 +410,25 @@ int main(int argc, char *argv[]) {
                 break;
         }
     }
+}
+
+int main(int argc, char *argv[]) {
+    if (argc < 2) {
+        puts("ERROR: ROM path not given");
+        return 1;
+    }
+    char* rom_path = argv[1];
+    long rom_size;
+    uint8_t* rom = read_binary_file(rom_path, &rom_size);
+    if (rom == NULL) {
+        printf("Error reading \"%s\"", rom_path);
+        return 1;
+    }
+    sdl_handle h = graphics_init();
+    clear_screen(&h);
+    display_screen(&h);
+    chip8_vm vm;
+    vm_load_program(&vm, &h, 50, rom, rom_size);
+    vm_run(&vm);
     return 0;
 }

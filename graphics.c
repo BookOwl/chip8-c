@@ -5,8 +5,8 @@
 
 #define SCREEN_WIDTH   64
 #define SCREEN_HEIGHT  32
-#define PIXEL_WIDTH    10
-#define PIXEL_HEIGHT   10
+#define PIXEL_WIDTH    15
+#define PIXEL_HEIGHT   15
 #define WINDOW_WIDTH   (SCREEN_WIDTH * PIXEL_WIDTH)
 #define WINDOW_HEIGHT  (SCREEN_HEIGHT * PIXEL_HEIGHT)
 
@@ -47,7 +47,6 @@ void clear_screen(sdl_handle*);
 sdl_handle graphics_init() {
     sdl_handle h;
     SDL_Window* window = NULL;
-    SDL_Surface* surf = NULL;
     if (SDL_Init(SDL_INIT_EVERYTHING) < 0) {
         printf("SDL could not initialize! SDL_Error: %s\n", SDL_GetError());
         exit(1);
@@ -75,7 +74,7 @@ void clear_screen(sdl_handle* gfx) {
     }
 }
 
-bool draw_sprite(sdl_handle* gfx, uint8_t start_x, uint8_t start_y, uint8_t sprite[], uint8_t sprite_len) {
+bool draw_sprite(sdl_handle* gfx, uint8_t start_x, uint8_t start_y, const uint8_t sprite[], uint8_t sprite_len) {
     start_x = start_x % SCREEN_WIDTH;
     start_y = start_y % SCREEN_HEIGHT;
     uint8_t old;
@@ -88,7 +87,7 @@ bool draw_sprite(sdl_handle* gfx, uint8_t start_x, uint8_t start_y, uint8_t spri
             pix = &gfx->screen[start_x + x][start_y + y];
             old = *pix;
             new = (sprite[y] >> (7 - x)) & 0x1;
-            printf("%s", new ? "#" : "_");
+            //printf("%s", new ? "#" : "_");
             // XOR the sprite data to the screen
             if ((old == 1) && (new == 1)) {
                 *pix = 0;
@@ -97,9 +96,9 @@ bool draw_sprite(sdl_handle* gfx, uint8_t start_x, uint8_t start_y, uint8_t spri
                 *pix = 1;
             }
         }
-        printf("\n");
+        //printf("\n");
     }
-    printf("---\n\n");
+    //printf("---\n\n");
     return cleared_pixel;
 }
 
