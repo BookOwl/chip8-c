@@ -196,9 +196,7 @@ tick_result vm_tick(chip8_vm* vm) {
         case RET:
             int16_t ret_addr = callstack_pop(&vm->stack);
             if (ret_addr < 0) return ERR_STACK_UNDERFLOW;
-            // Add 1 so that we start execution after the call instruction
-            // that pushed this return address to the stack
-            vm->pc = ret_addr + 2;
+            vm->pc = ret_addr;
             break;
         case SKP_EQ:
             if (vm->reg[inst.reg1] == inst.data) vm->pc += 2;
@@ -281,7 +279,7 @@ tick_result vm_tick(chip8_vm* vm) {
                         code = 0x0;
                         break;
                 }
-                vm->key_released = false;
+                vm->key_released = NULL;
                 vm->waiting_for_keypress = false;
             } else {
                 // If a key has not been released change vm->pc to point at this same instruction
@@ -323,7 +321,7 @@ tick_result vm_tick(chip8_vm* vm) {
             uint8_t x = vm->reg[inst.reg1];
             vm->ram[vm->i] = x / 100;
             vm->ram[vm->i + 1] = (x / 10) % 10;
-            vm->ram[vm->i + 2] = x % 100;
+            vm->ram[vm->i + 2] = x % 10;
             break;
         }
         case SAVE_REG:
@@ -428,7 +426,7 @@ int main(int argc, char *argv[]) {
     clear_screen(&h);
     display_screen(&h);
     chip8_vm vm;
-    vm_load_program(&vm, &h, 50, rom, rom_size);
+    vm_load_program(&vm, &h, 700, rom, rom_size);
     vm_run(&vm);
     return 0;
 }
